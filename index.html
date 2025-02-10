@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الهروب من الحياة</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 5px;
+            color: white;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">صحتك: 100 | عناصر: 0</div>
+
+    <!-- Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tween.js@18.6.4/dist/tween.umd.min.js"></script>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // إضافة ضوء للمشهد
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(0, 10, 10);
+        scene.add(light);
+
+        // Background
+        const backgroundTexture = new THREE.TextureLoader().load('https://i.imgur.com/8QZQZQZ.png', () => {
+            console.log("تم تحميل خلفية المشهد بنجاح.");
+        }, undefined, (error) => {
+            console.error("خطأ في تحميل خلفية المشهد:", error);
+        });
+        backgroundTexture.wrapS = THREE.RepeatWrapping;
+        backgroundTexture.wrapT = THREE.RepeatWrapping;
+        backgroundTexture.repeat.set(10, 10);
+        const backgroundMaterial = new THREE.MeshBasicMaterial({ map: backgroundTexture });
+        const background = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), backgroundMaterial);
+        background.rotation.x = -Math.PI / 2;
+        scene.add(background);
+
+        // Player
+        const playerTexture = new THREE.TextureLoader().load('https://i.imgur.com/3QZQZQZ.png', () => {
+            console.log("تم تحميل نسيج اللاعب بنجاح.");
+        }, undefined, (error) => {
+            console.error("خطأ في تحميل نسيج اللاعب:", error);
+        });
+        const playerMaterial = new THREE.MeshBasicMaterial({ map: playerTexture });
+        const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.set(0, 1, 0);
+        scene.add(player);
+
+        // Enemies (Zombies)
+        const zombies = [];
+        const zombieTexture = new THREE.TextureLoader().load('https://i.imgur.com/4QZQZQZ.png', () => {
+            console.log("تم تحميل نسيج الزومبي بنجاح.");
+        }, undefined, (error) => {
+            console.error("خطأ في تحميل نسيج الزومبي:", error);
+        });
+        const zombieMaterial = new THREE.MeshBasicMaterial({ map: zombieTexture });
+        const zombieGeometry = new THREE.BoxGeometry(1, 2, 1);
+
+        function createZombie(x, y) {
+            const zombie = new THREE.Mesh(zombieGeometry, zombieMaterial);
+            zombie.position.set(x, 1, y);
+            scene.add(zombie);
+            zombies.push({ mesh: zombie, health: 100 });
+        }
+
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * 100 - 50;
+            const y = Math.random() * 100 - 50;
+            createZombie(x, y);
+        }
+
+        // Items to collect
+        const items = [];
+        const itemTexture = new THREE.TextureLoader().load('https://i.imgur.com/5QZQZQZ.png', () => {
+            console.log("تم تحميل نسيج العنصر بنجاح.");
+        }, undefined, (error) => {
+            console.error("خطأ في تحميل نسيج العنصر:", error);
+        });
+        const itemMaterial = new THREE.MeshBasicMaterial({ map: itemTexture });
+        const itemGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+
+        function createItem(x, y) {
+            const item = new THREE.Mesh(itemGeometry, itemMaterial);
+            item.position.set(x, 0.5, y);
+            scene.add(item);
+            items.push(item);
+        }
+
+        // Generate some items at random positions
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * 100 - 50;
+            const y = Math.random() * 100 - 50;
+            createItem(x, y);
+        }
+
+        // Camera setup
+        camera.position.set(0, 10, 20);
+        camera.lookAt(player.position);
+
+        // Game variables
+        let playerHealth = 100;
+        let collectedItems = 0;
+
+        // Update UI
+        function updateUI() {
+            document.getElementById('ui').textContent = 
+                `صحتك: ${playerHealth} | عناصر: ${collectedItems}`;
+        }
+
+        // Controls
+        const keys = {};
+        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        let isRunning = false;
+        let isCrouching = false;
+        let isJumping = false;
+
+        // Move player
+        function movePlayer() {
+            const speed = isRunning ? 0.2 : 0.1;
+            if (keys['KeyW']) player.position.z -= speed;
+            if (keys['KeyS']) player.position.z += speed;
+            if (keys['KeyA']) player.position.x -= speed;
+            if (keys['KeyD']) player.position.x += speed;
+
+            // Jump
+            if (keys['Space'] && !isJumping) {
+                isJumping = true;
+                new TWEEN.Tween(player.position)
+                    .to({ y: player.position.y + 2 }, 300)
+                    .easing(TWEEN.Easing.Quadratic.Out)
+                    .onComplete(() => {
+                        new TWEEN.Tween(player.position)
+                            .to({ y: 1 }, 300)
+                            .easing(TWEEN.Easing.Quadratic.In)
+                            .onComplete(() => isJumping = false)
+                            .start();
+                    })
+                    .start();
+            }
+
+            // Crouch
+            if (keys['KeyV']) {
+                isCrouching = true;
+                player.scale.y = 0.5;
+            } else {
+                isCrouching = false;
+                player.scale.y = 1;
+            }
+
+            // Collect items
+            for (let i = items.length - 1; i >= 0; i--) {
+                if (player.position.distanceTo(items[i].position) < 1) {
+                    scene.remove(items[i]);
+                    items.splice(i, 1);
+                    collectedItems++;
+                    updateUI();
+                }
+            }
+
+            // Update camera position to follow the player
+            camera.position.x = player.position.x;
+            camera.position.z = player.position.z + 20;
+            camera.lookAt(player.position);
+        }
+
+        // Move zombies
+        function moveZombies() {
+            zombies.forEach(zombie => {
+                const direction = new THREE.Vector3(
+                    player.position.x - zombie.mesh.position.x,
+                    0,
+                    player.position.z - zombie.mesh.position.z
+                ).normalize();
+
+                zombie.mesh.position.x += direction.x * 0.05;
+                zombie.mesh.position.z += direction.z * 0.05;
+
+                // Check collision with player
+                if (zombie.mesh.position.distanceTo(player.position) < 1) {
+                    playerHealth -= 10;
+                    if (playerHealth <= 0) {
+                        endGame("لقد خسرت! صحتك نفذت.");
+                    }
+                }
+            });
+        }
+
+        // Game loop
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            movePlayer();
+            moveZombies();
+            updateUI();
+
+            TWEEN.update();
+            renderer.render(scene, camera);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
